@@ -466,7 +466,7 @@ root = tk.Tk()
 root.title("Modbus sensor connection app")
 
 root.geometry("610x420")
-root.resizable(False, False)
+root.resizable(False, True)
 root.configure(background="white")
 
 img_check = tk.PhotoImage(file="images/check.png")
