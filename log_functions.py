@@ -1,5 +1,7 @@
 import struct
 from pymodbus.client import ModbusSerialClient as ModbusClient
+from pymodbus.payload import BinaryPayloadDecoder
+from pymodbus.constants import Endian
 
 
 """
@@ -35,6 +37,15 @@ def int_to_float32(int16_1, int16_2):
     return float32_value
 
 
+def decode_32bits(regs: list, pos: int) -> float:
+    """returns a 32 bits float from 2 bytes in a list"""
+    return BinaryPayloadDecoder.fromRegisters(
+        regs[pos : pos + 2], byteorder=Endian.Big, wordorder=Endian.Little
+    ).decode_32bit_float()
+
+
+
+
 def log_apogee_GHI(client_local, slave_id):
     """
     Communicate and read from the Apogee GHI sensor
@@ -59,8 +70,8 @@ def log_par(client_local: ModbusClient, slave_id: int):
     raw_data = client_local.read_holding_registers(address=0, count=2, slave=slave_id).registers
     # raw_data = read_holding_registers_(client=client_local, address=0, count=2, slave_id=slave_id)
     radiation_mol = raw_data[0]
-    radiation_watt = raw_data[1]
-    liste = ["Radiation (µmol/m2/s): ", radiation_mol, " ,Radiation (W/m2): ", radiation_watt]
+    # radiation_watt = raw_data[1]
+    liste = [radiation_mol]
     return list_formatting(liste)
 
 def log_th(client_local: ModbusClient, slave_id: int):
@@ -74,8 +85,10 @@ def log_th(client_local: ModbusClient, slave_id: int):
     # raw_data = client_local.read_holding_registers(6, 1, slave=slave_id)
     temperature = (raw_data[0]) / 10
     humidity = (raw_data[1]) / 10
-    liste = ["Temperature: ", temperature, " ,Humidity: ", humidity]
+    liste = ["T: ", temperature, " ,H: ", humidity]
     return list_formatting(liste)
+    # return [temperature, humidity]
+    # return liste
 
 
 def log_ir_leaf_temp(client_local:ModbusClient ,slave_id: int):
@@ -87,6 +100,49 @@ def log_ir_leaf_temp(client_local:ModbusClient ,slave_id: int):
     raw_data = client_local.read_holding_registers(0x0b, 1, slave=slave_id).registers[0]
     raw_data = raw_data / 10
     return raw_data
+
+
+def log_rainfall(client_local: ModbusClient, slave_id: int):
+    """
+    Communcate and read from the Wind Speed Sensor
+    input: modbus client; sensor address
+    output: Wind Speed (m/s)
+    """
+
+    raw_data = client_local.read_holding_registers(address=0xB, count=5, slave=slave_id)
+    type_list = ["None", "Rain", "Snow", "Hail"]
+    rain_type = type_list[int(raw_data[0])]
+    rainfall = decode_32bits(raw_data, 1)
+    acc = decode_32bits(raw_data, 3)
+    return rain_type, rainfall, acc
+
+
+def log_wspeed(client_local: ModbusClient, slave_id: int):
+    """
+    Communcate and read from the Wind Speed Sensor
+    input: modbus client; sensor address
+    output: Wind Speed (m/s)
+    """
+
+    data = client_local.read_holding_registers(address=0, count=1, slave=slave_id).registers[0]
+    # print(data)
+    return data / 10
+    # return client_local.read_holding_registers(address=0, count=1, slave=slave_id)[0] / 10
+
+
+def log_wspeed_ultrasonic(client_local: ModbusClient, slave_id: int):
+    """
+    Communcate and read from the Wind Speed Sensor
+    input: modbus client; sensor address
+    output: Wind Speed (m/s)
+    """
+    raw_data = client_local.read_holding_registers(address=0x51, count=2, slave=slave_id).registers
+    wind_direction = raw_data[0]
+    wind_speed = raw_data[1] / 100
+    return [wind_direction, wind_speed]
+
+
+
 
 def log_dustIQ(client_local:ModbusClient, slave_id: int):
     """
@@ -103,9 +159,9 @@ def log_dustIQ(client_local:ModbusClient, slave_id: int):
     tilt_y = raw_data[29]
     temp_backpanel = raw_data[31]
     status_flag = raw_data[34]
-    # liste = ["SR1:",SR_sensor_1,"TR1:", TR_loss_1, "\nSR2:",SR_sensor_2, "TR2:",TR_loss_2, "\ntilt_x:",tilt_x, 
+    # liste = ["SR1:",SR_sensor_1,"TR1:", TR_loss_1, "\nSR2:",SR_sensor_2, "TR2:",TR_loss_2, "\ntilt_x:",tilt_x,
     #          "tilt_y:",tilt_y, "\ntemp:",temp_backpanel, "status:",bin(status_flag)]
-    # return list_formatting(liste)  
+    # return list_formatting(liste)
     return SR_sensor_1, TR_loss_1, SR_sensor_2, TR_loss_2
 
 
@@ -147,3 +203,20 @@ def setup_ir_leaf_temp_emissivity(client: ModbusClient, emissivity:int, slave_id
     output: the emissivity value gets changed
     """
     return client.write_register(address=0x17, value=emissivity, slave=slave_id)
+
+
+def setup_wind_speed_id(client: ModbusClient, new_slave_id: int, current_slave_id: int = 254):
+    """
+    input: modbus client; future address
+    output: the address of the slave gets changed
+    """
+    return client.write_register(address=0x30, value=new_slave_id, slave=current_slave_id)
+
+
+
+def setup_wind_speed_ultrasonic_id(client: ModbusClient, new_slave_id: int, current_slave_id: int = 0):
+    """
+    input: modbus client; future address
+    output: the address of the slave gets changed
+    """
+    return client.write_register(address=0x42, value=new_slave_id, slave=current_slave_id)

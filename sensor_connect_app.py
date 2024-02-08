@@ -5,6 +5,13 @@ from tkinter import ttk
 from pymodbus.client import ModbusSerialClient as ModbusClient
 import serial.tools.list_ports
 import log_functions as log_fct
+import datetime as dt
+import sys
+import contextlib
+import io
+from tkinter import Text, Scrollbar
+
+captured_output = io.StringIO()
 
 NO_ERROR = 0
 ERROR = 1
@@ -19,6 +26,20 @@ ID_slave = 1
 
 
 # %% Functions
+def clear_output():
+    output_entry.config(state="normal")
+    output_entry.delete("1.0", tk.END)
+    output_entry.config(state="disabled")
+
+
+def handle_key_event(event):
+    # Check if the event corresponds to a specific keyboard shortcut
+    if event.keysym == "Return":
+        # Call the button click function
+        client_generator()
+        # print("Keyboard shortcut pressed")
+
+
 def scan_com_ports():
     com_ports = list(serial.tools.list_ports.comports())
     com_port_list = [port.device for port in com_ports]
@@ -118,7 +139,7 @@ def open_secondary_window():
             ).registers
         except:
             client_modbus.close()
-        print(values_reg)
+        # print(values_reg)
         if values_reg == []:
             values_reg = ["xxx" for i in range(reg_entry_number)]
         for i in range(reg_entry_number):
@@ -181,7 +202,12 @@ function_list_log = [
     if callable(getattr(log_fct, name)) and name.startswith("log")
 ]
 function_list_log = [func.__name__ for func in function_list_log]
-function_list_basic = ["read_holding_registers", "read_input_registers"]
+function_list_log = ["Please select one !"] + function_list_log
+function_list_basic = [
+    "Please select one !",
+    "read_holding_registers",
+    "read_input_registers",
+]
 
 function_list_setup = [
     getattr(log_fct, name)
@@ -252,12 +278,12 @@ def update_value():
     global continuous_reading
     slave_id = check_id_entry(id_entry.get())
     address_to_read_from = check_id_entry(address_entry.get())
-    data_value_lbl.config(
-        text=read_register_log(
-            function_combobox.get(), slave_id[VALUE], address_to_read_from[VALUE]
-        )
-    )
+    text_to_display = read_register_log(function_combobox.get(), slave_id[VALUE], address_to_read_from[VALUE]) + ["@", str(dt.datetime.now().strftime("%H:%M:%S"))]
+    text_to_display = " ".join(text_to_display)
+    data_value_lbl.config(text=text_to_display)
+
     if continuous_reading:
+        # update_output(captured_output.getvalue())
         data_value_lbl.after(1000, update_value)
     return True
 
@@ -289,33 +315,72 @@ def write_value_basic():
     return True
 
 
-def read_register_log(function_log, slave_id, address_to_read_from=0):
+def read_register_log(function_log, ID_slave, address_to_read_from=0):
     """
     Functions that reads the data from the sensor, depending on the function selected
     """
     values_reg = []
-    global baudrate, parity, ID_slave
+    global baudrate, parity
     client_modbus = init_modbus_client(
         check_port(com_port_combobox.get())[VALUE], baudrate, parity
     )
     if function_log == "log_apogee_GHI":
-        values_reg = log_fct.log_apogee_GHI(client_modbus, ID_slave)
-    elif function_log == "log_par":
-        values_reg = log_fct.log_par(client_modbus, ID_slave)
-        data_unit.config(text="µmol/m2/-s", font=("Arial", 16))
-    elif function_log == "log_th":
-        values_reg = log_fct.log_th(client_modbus, ID_slave)
-        data_unit.config(text="°C, %", font=("Arial", 16))
-    elif function_log == "log_ir_leaf_temp":
         try:
-            values_reg = log_fct.log_ir_leaf_temp(client_modbus, ID_slave)
+            values_reg = [log_fct.log_apogee_GHI(client_modbus, ID_slave)]
         except:
             values_reg = ["error"]
             client_modbus.close()
-        data_unit.config(text="°C", font=("Arial", 16))
+
+    elif function_log == "log_par":
+        try:
+            values_reg = [log_fct.log_par(client_modbus, ID_slave)]
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
+    elif function_log == "log_th":
+        try:
+            values_reg = [log_fct.log_th(client_modbus, ID_slave)]
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
+    elif function_log == "log_ir_leaf_temp":
+        try:
+            values_reg = [log_fct.log_ir_leaf_temp(client_modbus, ID_slave)]
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
     elif function_log == "log_dustIQ":
-        values_reg = log_fct.log_dustIQ(client_modbus, ID_slave)
-        data_unit.config(text="%", font=("Arial", 16))
+        try:
+            values_reg = [log_fct.log_dustIQ(client_modbus, ID_slave)]
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
+    elif function_log == "log_wspeed":
+        try:
+            values_reg = [log_fct.log_wspeed(client_modbus, ID_slave)]
+
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
+    elif function_log == "log_wspeed_ultrasonic":
+        try:
+            values_reg = [log_fct.log_wspeed_ultrasonic(client_modbus, ID_slave)]
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
+    elif function_log == "log_rainfall":
+        try:
+            values_reg = [log_fct.log_rainfall(client_modbus, ID_slave)]
+        except:
+            values_reg = ["error"]
+            client_modbus.close()
+
     elif function_log == "read_holding_registers":
         try:
             values_reg = client_modbus.read_holding_registers(
@@ -324,7 +389,7 @@ def read_register_log(function_log, slave_id, address_to_read_from=0):
         except:
             values_reg = ["error"]
             client_modbus.close()
-        data_unit.config(text="(units)", font=("Arial", 16))
+
     elif function_log == "read_input_registers":
         try:
             values_reg = client_modbus.read_input_registers(
@@ -333,11 +398,13 @@ def read_register_log(function_log, slave_id, address_to_read_from=0):
         except:
             values_reg = ["error"]
             client_modbus.close()
-        data_unit.config(text="(units)", font=("Arial", 16))
+
     else:
         values_reg = ["error"]
+    values_reg = [str(i) for i in values_reg]
     client_modbus.close()
     return values_reg
+
 
 
 def write_register_setup(fct_setup, slave_id, address_to_write=0):
@@ -352,9 +419,11 @@ def write_register_setup(fct_setup, slave_id, address_to_write=0):
     if fct_setup == "setup_par_id":
         value_to_write = int(value_entry.get())
         log_fct.setup_par_id(client_modbus, value_to_write, slave_id)
+
     elif fct_setup == "setup_th_id":
         value_to_write = int(value_entry.get())
         log_fct.setup_th_id(client_modbus, value_to_write, slave_id)
+
     elif fct_setup == "setup_ir_leaf_temp_id":
         value_to_write = int(value_entry.get())
         try:
@@ -362,6 +431,7 @@ def write_register_setup(fct_setup, slave_id, address_to_write=0):
         except:
             write_lbl.config(text="Error")
             return None
+
     elif fct_setup == "setup_ir_leaf_temp_emissivity":
         value_to_write = int(value_entry.get())
         try:
@@ -371,6 +441,23 @@ def write_register_setup(fct_setup, slave_id, address_to_write=0):
         except:
             write_lbl.config(text="Error")
             return None
+
+    elif fct_setup == "setup_wind_speed_id":
+        value_to_write = int(value_entry.get())
+        try:
+            log_fct.setup_wind_speed_id(client_modbus, value_to_write, slave_id)
+        except:
+            write_lbl.config(text="Error")
+            return None
+
+    elif fct_setup == "setup_wind_speed_ultrasonic_id":
+        value_to_write = int(value_entry.get())
+        try:
+            log_fct.setup_wind_speed_ultrasonic_id(client_modbus, value_to_write, slave_id)
+        except:
+            write_lbl.config(text="Error")
+            return None
+
     elif fct_setup == "write_register":
         value_to_write_2 = int(value_entry_2.get())
         try:
@@ -381,9 +468,12 @@ def write_register_setup(fct_setup, slave_id, address_to_write=0):
             write_lbl.config(text="Error")
             print("error")
             return None
+
     else:
         return ["error"]
-    write_lbl.config(text="Writing successful")
+    write_lbl.config(text="✅")
+    # after 2 seconds, reset the label
+    write_lbl.after(4000, lambda: write_lbl.config(text="   "))
     client_modbus.close()
     return None
 
@@ -412,8 +502,10 @@ def change_combobx_entries():
     """
     if rad_butt_var.get() == 1:  # Check the value of the Radiobutton
         function_combobox["values"] = function_list_log
+        function_combobox.current(0)
     elif rad_butt_var.get() == 2:
         function_combobox["values"] = function_list_basic
+        function_combobox.current(0)
     else:
         function_combobox["values"] = []
 
@@ -465,7 +557,7 @@ def change_setup_combobox_entries():
 root = tk.Tk()
 root.title("Modbus sensor connection app")
 
-root.geometry("610x420")
+root.geometry("650x400")
 root.resizable(False, True)
 root.configure(background="white")
 
@@ -533,7 +625,10 @@ message_frame["borderwidth"] = 5
 message_frame["relief"] = "groove"
 
 label_message = ttk.Label(
-    message_frame, background="#D5D5D5", width=60, text="Warnings and messages"
+    message_frame, background="#D5D5D5", width=50, text="Warnings and messages",
+    font=("Arial", 12),
+    borderwidth=2,
+    relief="solid",  # Other options: "flat", "raised", "sunken", "ridge", "groove"
 )
 label_message.pack(side="left", padx=10)
 
@@ -571,6 +666,7 @@ radio_1 = tk.Radiobutton(
 )
 radio_1.grid(row=r, column=c, padx=0, pady=0, sticky="w")
 radio_1.bind("<Button-1>", reset_combobox_data_text)
+
 radio_2 = tk.Radiobutton(
     data_frame,
     text="Basic fct",
@@ -620,16 +716,28 @@ data_label = ttk.Label(data_frame, text="Data:")
 data_label.grid(row=0, column=4, padx=10, pady=0, rowspan=2)
 
 
-# add a label for the data
+# # add a label for the data
+# data_value_lbl = ttk.Label(
+#     data_frame, text=rad_butt_var.get(), background="#D5D5D5", font=("Arial", 13)
+# )
+# data_value_lbl.grid(row=0, column=5, padx=10, pady=0, rowspan=2)
+# data_value_lbl.config(wraplength=200)
+# Add a label for the data
 data_value_lbl = ttk.Label(
-    data_frame, text=rad_butt_var.get(), background="#D5D5D5", font=("Arial", 16)
+    data_frame,
+    # text=rad_butt_var.get(),
+    text="                                                                  ",
+    background="#D5D5D5",
+    font=("Arial", 13),
+    borderwidth=2,
+    relief="solid",  # Other options: "flat", "raised", "sunken", "ridge", "groove"
 )
-data_value_lbl.grid(row=0, column=5, padx=10, pady=0, rowspan=2)
+data_value_lbl.grid(row=0, column=5, padx=10, pady=0, rowspan=2, sticky="nsew")  # Use sticky to fill the available space
 data_value_lbl.config(wraplength=200)
 
-# add a label for the data
-data_unit = ttk.Label(data_frame, text="(unit)")
-data_unit.grid(row=0, column=6, padx=10, pady=0, rowspan=2)
+# # add a label for the data
+# data_unit = ttk.Label(data_frame, text="(unit)")
+# data_unit.grid(row=0, column=6, padx=10, pady=0, rowspan=2)
 
 
 # add a button on the right of the frame, that opens a new window
@@ -729,8 +837,57 @@ write_button_2.grid(
 )
 
 # add a label that shows the if the write was successful
-write_lbl = ttk.Label(setup_frame, text=" ")
+write_lbl = ttk.Label(setup_frame, text="   ")
 write_lbl.grid(row=0, column=8, padx=10, pady=0, sticky="WENS")
+
+
+# # %% Frame : output from python script
+# # ----------------------------------output frame-----------------------------------------#
+# # add a label that says "Output of the script: ""bo
+# output_label = ttk.Label(root, text="Error messages ")
+# output_label.pack(side="top", padx=10, fill="x")
+# #replace pack by grid
+# # output_label.grid(row=0, column=0, padx=10, pady=0, sticky="w")
+# output_label.configure(background="white")
+
+# output_frame = ttk.Frame(root)
+# output_frame.pack(side="top", padx=10, pady=10, fill="x")
+# #replace pack by grid
+# # output_frame.grid(row=1, column=0, padx=10, pady=0, sticky="w")
+# output_frame["borderwidth"] = 1
+# output_frame["relief"] = "groove"
+
+# # # add entry widget to display the output, and make it scrollable
+# # output_entry = ttk.Entry(output_frame, textvariable="")
+# # output_entry.pack(side="left", padx=10, pady=10, fill="x", expand=True, ipady=30)
+# # output_scroll = ttk.Scrollbar(output_frame, orient="vertical", command=output_entry.xview)
+# # output_scroll.pack(side="right", fill="y")
+# # output_entry.config(xscrollcommand=output_scroll.set, state='readonly', background="white", )
+
+# # add a button below the entry widget to clear the output
+# clear_button = ttk.Button(output_frame, text="Clear", command=clear_output)
+# # clear_button.pack(side="top", padx=0, pady=5)
+# #replace pack by grid
+# clear_button.grid(row=0, column=0, padx=10, pady=10, sticky="w")
+
+# output_entry = Text(output_frame, wrap="word", height=5, width=57, state="disabled")
+# # output_entry.pack(side="left", padx=10, pady=10, fill="x")
+# #replace pack by grid
+# output_entry.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
+# output_scroll = Scrollbar(output_frame, orient="vertical", command=output_entry.yview)
+# # output_scroll.pack(side="right", fill="y")
+# #replace pack by grid
+# output_scroll.grid(row=0, column=2, padx=10, pady=10, sticky="nsew")
+# output_entry.config(
+#     yscrollcommand=output_scroll.set,
+#     state="disabled",
+#     background="white",
+#     padx=5,
+#     pady=5,
+# )
+
+
+
 
 
 # %% Main loop
@@ -753,6 +910,34 @@ def update_gif(ind):
         root.after(100, update_gif, ind)
 
 
+# def update_output(text_var):
+#     # print("update output")
+#     output_entry.config(state="normal")
+#     output_entry.delete(0, tk.END)
+#     output_entry.insert(tk.END, text_var)
+#     # print(text_var)
+#     output_entry.config(state='disabled')
+#     root.after(1000, update_output, captured_output.getvalue())
+
+# def update_output(text_var):
+#     # print("update output")
+#     # print("error: ", text_var)
+#     output_entry.config(state="normal")
+#     output_entry.delete("1.0", tk.END)
+#     output_entry.insert(tk.END, text_var)
+#     output_entry.config(state='disabled')
+#     # sys.stdout.flush()
+#     # root.after(1000, update_output, captured_output.getvalue())
+
+
+
+# with contextlib.redirect_stdout(captured_output):
+#     root.after(0, update_gif, 0)
+#     root.after(200, update_output, captured_output.getvalue())
+#     # Start the Tkinter main loop
+#     root.bind("<Return>", handle_key_event)
+#     root.mainloop()
+
 root.after(0, update_gif, 0)
-# Start the Tkinter main loop
+root.bind("<Return>", handle_key_event)
 root.mainloop()
